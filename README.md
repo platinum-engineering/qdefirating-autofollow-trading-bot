@@ -1,0 +1,1 @@
+# qdefirating-autofollow-trading-bot
