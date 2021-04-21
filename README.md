@@ -1,4 +1,5 @@
 # qdefirating-autofollow-trading-bot
+Auto-follow trading bot for uniswap-v2
 
 ## Install and start
 Install with npm
