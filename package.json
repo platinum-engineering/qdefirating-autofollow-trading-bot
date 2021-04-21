@@ -5,7 +5,7 @@
   "main": "dist/index.js",
   "scripts": {
     "start": "node ${npm_package_main}",
-    "dev": "nodemon --exec \"NODE_ENV=dev babel-node src/index.js\"",
+    "dev": "nodemon --exec \"npm run build && ODE_ENV=dev babel-node src/index.js\"",
     "build": "rm -rf dist/ && babel ./src/ -d ./dist/ --copy-files",
     "release": "standard-version"
   },
@@ -26,7 +26,6 @@
     "@ethersproject/solidity": "^5.1.0",
     "@uniswap/sdk": "^3.0.3",
     "abi-decoder": "^2.4.0",
-    "babel-node": "0.0.1-security",
     "dotenv-safe": "^4.0.3",
     "ethereumjs-abi": "^0.6.8",
     "ethereumjs-tx": "^2.1.2",
