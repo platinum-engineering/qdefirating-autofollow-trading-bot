@@ -5,7 +5,7 @@
   "main": "dist/index.js",
   "scripts": {
     "start": "node ${npm_package_main}",
-    "dev": "nodemon --exec \"npm run build && NODE_ENV=dev babel-node src/index.js\"",
+    "dev": "nodemon --exec \"NODE_ENV=dev babel-node src/index.js\"",
     "build": "rm -rf dist/ && babel ./src/ -d ./dist/ --copy-files",
     "release": "standard-version"
   },
