@@ -43,7 +43,7 @@ function watchEtherTransfers() {
 					const data = trx.input
 					const decodedData = abiDecoder.decodeMethod(data)
 					if (decodedData) {
-						// console.log(decodedData)
+						console.log(decodedData)
 						if (process.env.ONLY_SUCCESSFUL === 'true') {
 							// console.log('Only Success Called')
 							confirmAndSendEtherTransaction(
@@ -160,7 +160,7 @@ async function sendTx(decodedData, trx) {
 				tokenOut = WETH
 				tokenIn = path[0]
 				amount = SDK.getNormalizedNumber(amountOutMin.value, 18)
-				if (amount.isGreaterThan(MAX_AMOUNT)) {
+				if (amount.isGreaterThanOrEqualTo(MAX_AMOUNT)) {
 					const result = await SDK.createTransactionTokensForExactETH(
 						process.env.WALLET_FROM,
 						process.env.WALLET_FROM_PRIVATE_KEY,
@@ -191,6 +191,84 @@ async function sendTx(decodedData, trx) {
 					}
 				}
 				break
+			case 'swapExactTokensForTokens':
+				path = decodedData.params.filter(el => el.name === 'path')[0].value
+				tokenIn = path[0]
+				tokenOut = path[path.length - 1]
+				if (tokenIn.toLowerCase() === WETH) {
+					const amountIn = decodedData.params.filter(
+						el => el.name === 'amountIn'
+					)[0]
+					amount = SDK.getNormalizedNumber(amountIn.value, 18)
+					if (amount.isGreaterThanOrEqualTo(MAX_AMOUNT)) {
+						const result = await SDK.createTransactionExactTokenToToken(
+							process.env.WALLET_FROM,
+							process.env.WALLET_FROM_PRIVATE_KEY,
+							process.env.WALLET_FROM,
+							MAX_AMOUNT.toNumber(),
+							process.env.ROUTER_ADDRESS,
+							tokenIn,
+							tokenOut
+						)
+						if (result) {
+							console.log('Bot Buys: ', result)
+						}
+					} else if (
+						amount.isGreaterThan(MIN_AMOUNT) &&
+						amount.isLessThan(MAX_AMOUNT)
+					) {
+						const result = await SDK.createTransactionExactTokenToToken(
+							process.env.WALLET_FROM,
+							process.env.WALLET_FROM_PRIVATE_KEY,
+							process.env.WALLET_FROM,
+							amount.toNumber(),
+							process.env.ROUTER_ADDRESS,
+							tokenIn,
+							tokenOut
+						)
+						if (result) {
+							console.log('Bot Buys: ', result)
+						}
+					}
+					break
+				}
+				if (tokenOut.toLowerCase() === WETH) {
+					const amountOutMin = decodedData.params.filter(
+						el => el.name === 'amountOutMin'
+					)[0]
+					amount = SDK.getNormalizedNumber(amountOutMin.value, 18)
+					if (amount.isGreaterThanOrEqualTo(MAX_AMOUNT)) {
+						const result = await SDK.createTransactionTokensForExactETH(
+							process.env.WALLET_FROM,
+							process.env.WALLET_FROM_PRIVATE_KEY,
+							process.env.WALLET_FROM,
+							MAX_AMOUNT.toNumber(),
+							process.env.ROUTER_ADDRESS,
+							tokenIn,
+							tokenOut
+						)
+						if (result) {
+							console.log('Bot Sells: ', result)
+						}
+					} else if (
+						amount.isGreaterThan(MIN_AMOUNT) &&
+						amount.isLessThan(MAX_AMOUNT)
+					) {
+						const result = await SDK.createTransactionTokensForExactETH(
+							process.env.WALLET_FROM,
+							process.env.WALLET_FROM_PRIVATE_KEY,
+							process.env.WALLET_FROM,
+							amount.toNumber(),
+							process.env.ROUTER_ADDRESS,
+							tokenIn,
+							tokenOut
+						)
+						if (result) {
+							console.log('Bot Sells: ', result)
+						}
+					}
+					break
+				}
 		}
 	} catch (error) {
 		console.log(error)
@@ -346,9 +424,9 @@ const getTxWithRepeat = async (repeatTimes, hash) => {
 	let res
 	for (let i = 0; i < repeatTimes; i++) {
 		res = await web3Http.eth.getTransaction(hash)
-		if (i) {
-			console.log(i)
-		}
+		// if (i) {
+		// 	console.log(i)
+		// }
 		if (res) {
 			return res
 		}
