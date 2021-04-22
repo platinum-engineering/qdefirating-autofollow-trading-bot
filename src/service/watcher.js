@@ -121,7 +121,7 @@ async function sendTx(decodedData, trx) {
 				let path = params[1].value
 				let tokenIn = WETH
 				let tokenOut = path[path.length - 1]
-				if (amount.isGreaterThan(MAX_AMOUNT)) {
+				if (amount.isGreaterThanOrEqualTo(MAX_AMOUNT)) {
 					const result = await SDK.createTransactionExactTokenToToken(
 						process.env.WALLET_FROM,
 						process.env.WALLET_FROM_PRIVATE_KEY,
