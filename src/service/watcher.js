@@ -121,6 +121,10 @@ async function sendTx(decodedData, trx) {
 				let path = params[1].value
 				let tokenIn = WETH
 				let tokenOut = path[path.length - 1]
+				if (process.env.STOP_BUYING === 'true') {
+					console.log('the bot is restricted form buying')
+					break
+				}
 				if (amount.isGreaterThanOrEqualTo(MAX_AMOUNT)) {
 					const result = await SDK.createTransactionExactTokenToToken(
 						process.env.WALLET_FROM,
@@ -157,6 +161,10 @@ async function sendTx(decodedData, trx) {
 					el => el.name === 'amountOutMin'
 				)[0]
 				path = decodedData.params.filter(el => el.name === 'path')[0].value
+				if (process.env.STOP_SELLING === 'true') {
+					console.log('the bot is restricted form selling')
+					break
+				}
 				tokenOut = WETH
 				tokenIn = path[0]
 				amount = SDK.getNormalizedNumber(amountOutMin.value, 18)
@@ -195,6 +203,10 @@ async function sendTx(decodedData, trx) {
 				path = decodedData.params.filter(el => el.name === 'path')[0].value
 				tokenIn = path[0]
 				tokenOut = path[path.length - 1]
+				if (process.env.STOP_BUYING === 'true') {
+					console.log('the bot is restricted form buying')
+					break
+				}
 				if (tokenIn.toLowerCase() === WETH) {
 					const amountIn = decodedData.params.filter(
 						el => el.name === 'amountIn'
