@@ -6,6 +6,7 @@ const web3Http = new Web3(
 const pairAbi = require('../abis/pair.json')
 const erc20Abi = require('../abis/ERC20.json')
 const routerAbi = require('../abis/uniswap-router-v2.json')
+const axios = require('axios')
 const BN = require('bignumber.js')
 import UniswapService from './uniswapService'
 const SDK = new UniswapService({})
@@ -14,23 +15,36 @@ const MIN_AMOUNT = new BN(process.env.MIN_AMOUNT)
 const WETH = process.env.WETH.toLowerCase()
 abiDecoder.addABI(routerAbi)
 
-function watchEtherTransfers() {
+let lastTxHash = ''
+
+const getAllTx = async () => {
+	const subdomain = process.env.BLOCKCHAIN === 'mainnet' ? 'api' : 'api-rinkeby'
+	const res = await axios.get(
+		`https://${subdomain}.etherscan.io/api?module=account&action=txlist&address=${process.env.TARGET_WALLET}&startblock=0&endblock=99999999&sort=desc&apikey=${process.env.ETHERSCAN_KEY}`
+	)
+
+	return res.data.result[0]
+}
+
+async function watchEtherTransfers() {
 	// Instantiate web3 with WebSocket provider
 	const web3 = new Web3(
 		new Web3.providers.WebsocketProvider(process.env.INFURA_WS_URL)
 	)
 
-	// Instantiate subscription object
-	const subscription = web3.eth
-		.subscribe('pendingTransactions', function(error, result) {
-			if (error) {
-				console.log(error)
-			}
-		})
-		.on('connected', async connection => {
-			console.log('Started listening for wallet ', process.env.TARGET_WALLET)
-		})
-		.on('data', async txHash => {
+	setInterval(async () => {
+		const lastTx = await getAllTx()
+		if (!lastTxHash) {
+			lastTxHash = lastTx.hash
+			return
+		}
+
+		if (lastTx.hash && lastTx.hash !== lastTxHash) {
+			lastTxHash = lastTx.hash
+			const txHash = lastTxHash
+
+			console.log('got tx:', txHash)
+
 			try {
 				// Get transaction details
 				const trx = await getTxWithRepeat(20, txHash)
@@ -65,7 +79,59 @@ function watchEtherTransfers() {
 			} catch (error) {
 				console.log(error)
 			}
-		})
+		}
+	}, 2000)
+
+	return
+
+	return
+
+	// // Instantiate subscription object
+	// const subscription = web3.eth
+	// 	.subscribe('pendingTransactions', function(error, result) {
+	// 		if (error) {
+	// 			console.log(error)
+	// 		}
+	// 	})
+	// 	.on('connected', async connection => {
+	// 		console.log('Started listening for wallet ', process.env.TARGET_WALLET)
+	// 	})
+	// 	.on('data', async txHash => {
+	// 		try {
+	// 			// Get transaction details
+	// 			const trx = await getTxWithRepeat(20, txHash)
+
+	// 			if (
+	// 				trx &&
+	// 				trx.from.toLowerCase() === process.env.TARGET_WALLET.toLowerCase()
+	// 			) {
+	// 				console.log('New Transaction Found: ', txHash)
+	// 				const data = trx.input
+	// 				const decodedData = abiDecoder.decodeMethod(data)
+	// 				if (decodedData) {
+	// 					console.log(decodedData)
+	// 					if (process.env.ONLY_SUCCESSFUL === 'true') {
+	// 						// console.log('Only Success Called')
+	// 						confirmAndSendEtherTransaction(
+	// 							txHash,
+	// 							1,
+	// 							decodedData,
+	// 							trx,
+	// 							sendTx
+	// 						)
+	// 					} else {
+	// 						// console.log('Only Not Success Called')
+	// 						await sendTx(decodedData, trx)
+	// 					}
+	// 				}
+	// 				// confirmEtherTransaction(txHash)
+	// 			}
+	// 			// Unsubscribe from pending transactions.
+	// 			// subscription.unsubscribe()
+	// 		} catch (error) {
+	// 			console.log(error)
+	// 		}
+	// 	})
 }
 
 async function getConfirmations(txHash) {
@@ -436,9 +502,9 @@ const getTxWithRepeat = async (repeatTimes, hash) => {
 	let res
 	for (let i = 0; i < repeatTimes; i++) {
 		res = await web3Http.eth.getTransaction(hash)
-		// if (i) {
-		// 	console.log(i)
-		// }
+		if (i) {
+			console.log(i)
+		}
 		if (res) {
 			return res
 		}
