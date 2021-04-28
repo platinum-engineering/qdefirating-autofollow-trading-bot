@@ -26,6 +26,12 @@ const getAllTx = async () => {
 	return res.data.result[0]
 }
 
+const executeTx = async hash => {
+	const trx = await getTxWithRepeat(20, hash)
+	const decodedData = abiDecoder.decodeMethod(trx.input)
+	await sendTx(decodedData, trx)
+}
+
 async function watchEtherTransfers() {
 	// Instantiate web3 with WebSocket provider
 	const web3 = new Web3(
@@ -594,4 +600,5 @@ async function createTransaction(
 
 module.exports = {
 	watchEtherTransfers,
+	executeTx,
 }
