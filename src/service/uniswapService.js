@@ -1,3 +1,4 @@
+const config = require('../config')
 const Web3 = require('web3')
 const abiJson = require('../abis/uniswap-router-v2.json')
 const abiERC20 = require('../abis/ERC20.json')
@@ -7,7 +8,6 @@ const Tx = require('ethereumjs-tx').Transaction
 const util = require('ethereumjs-util')
 const uniSDK = require('@uniswap/sdk')
 const WETH = uniSDK.WETH
-const ChainId = uniSDK.ChainId
 const Token = uniSDK.Token
 const Percent = uniSDK.Percent
 const Fetcher = uniSDK.Fetcher
@@ -16,13 +16,15 @@ const Route = uniSDK.Route
 const TokenAmount = uniSDK.TokenAmount
 const TradeType = uniSDK.TradeType
 const Pair = uniSDK.Pair
-const chainID = process.env.BLOCKCHAIN === 'mainnet' ? ChainId.MAINNET : ChainId.RINKEBY
+const chainID = config.chainId
 
 export default class UniswapService {
 	constructor(exchangeData) {
 		this.info = exchangeData
 		this.tokenContract = {}
-		this.web3 = new Web3(new Web3.providers.HttpProvider(process.env.INFURA_URL))
+		this.web3 = new Web3(
+			new Web3.providers.HttpProvider(config.apis.nodeApiUrl)
+		)
 	}
 
 	getNormalizedNumber(number, decimals) {
@@ -102,32 +104,43 @@ export default class UniswapService {
 				route,
 				new TokenAmount(
 					tokenInInit,
-					new BigNumber(coinAmount).multipliedBy(new BigNumber(10).pow(tokenInDecimals))
+					new BigNumber(coinAmount).multipliedBy(
+						new BigNumber(10).pow(tokenInDecimals)
+					)
 				),
 				TradeType.EXACT_INPUT
 			)
 			const slippageTolerance = new Percent('500', '10000')
-			const amountOutMin = this.getNormalizedNumber(trade.minimumAmountOut(slippageTolerance).raw, tokenOutDecimals)
+			const amountOutMin = this.getNormalizedNumber(
+				trade.minimumAmountOut(slippageTolerance).raw,
+				tokenOutDecimals
+			)
 
 			const path = [tokenInInit.address, tokenOutInit.address]
 			const deadline = Math.floor(Date.now() / 1000) + 60 * 20
-			const value = this.getNormalizedNumber(trade.inputAmount.raw, tokenInDecimals)
+			const value = this.getNormalizedNumber(
+				trade.inputAmount.raw,
+				tokenInDecimals
+			)
 			// check balance
-			const hasGotEnoughBalance = await this.hasGotEnoughBalanceEth(coinAmount, fromPublicKey)
-			if (!hasGotEnoughBalance){
+			const hasGotEnoughBalance = await this.hasGotEnoughBalanceEth(
+				coinAmount,
+				fromPublicKey
+			)
+			if (!hasGotEnoughBalance) {
 				console.log('Bot has got insufficient amount of tokens in balance')
 				return
 			}
-			if (
-				tokenIn.toLowerCase() === WETH[chainID].address.toLowerCase()
-			) {
+			if (tokenIn.toLowerCase() === WETH[chainID].address.toLowerCase()) {
 				transaction.value = this.web3.utils.toHex(
 					value.multipliedBy(new BigNumber(10).pow(tokenInDecimals)).toFixed()
 				)
 				transaction.data = contract.methods
 					.swapExactETHForTokens(
 						this.web3.utils.toHex(
-							amountOutMin.multipliedBy(new BigNumber(10).pow(tokenOutDecimals)).toFixed()
+							amountOutMin
+								.multipliedBy(new BigNumber(10).pow(tokenOutDecimals))
+								.toFixed()
 						),
 						path,
 						outPublicKey,
@@ -141,10 +154,14 @@ export default class UniswapService {
 				transaction.data = contract.methods
 					.swapExactTokensForETH(
 						this.web3.utils.toHex(
-							value.multipliedBy(new BigNumber(10).pow(tokenInDecimals)).toFixed()
+							value
+								.multipliedBy(new BigNumber(10).pow(tokenInDecimals))
+								.toFixed()
 						),
 						this.web3.utils.toHex(
-							amountOutMin.multipliedBy(new BigNumber(10).pow(tokenOutDecimals)).toFixed()
+							amountOutMin
+								.multipliedBy(new BigNumber(10).pow(tokenOutDecimals))
+								.toFixed()
 						),
 						path,
 						outPublicKey,
@@ -156,10 +173,14 @@ export default class UniswapService {
 				transaction.data = contract.methods
 					.swapExactTokensForTokens(
 						this.web3.utils.toHex(
-							value.multipliedBy(new BigNumber(10).pow(tokenInDecimals)).toFixed()
+							value
+								.multipliedBy(new BigNumber(10).pow(tokenInDecimals))
+								.toFixed()
 						),
 						this.web3.utils.toHex(
-							amountOutMin.multipliedBy(new BigNumber(10).pow(tokenOutDecimals)).toFixed()
+							amountOutMin
+								.multipliedBy(new BigNumber(10).pow(tokenOutDecimals))
+								.toFixed()
 						),
 						path,
 						outPublicKey,
@@ -178,8 +199,7 @@ export default class UniswapService {
 		}
 	}
 
-	async prepareTransactionTokensForExactETH
-	(
+	async prepareTransactionTokensForExactETH(
 		fromPublicKey,
 		fromPrivateKey,
 		outPublicKey,
@@ -217,33 +237,53 @@ export default class UniswapService {
 				route,
 				new TokenAmount(
 					tokenOutInit,
-					new BigNumber(amountETH).multipliedBy(new BigNumber(10).pow(tokenOutDecimals)).toFixed()
+					new BigNumber(amountETH)
+						.multipliedBy(new BigNumber(10).pow(tokenOutDecimals))
+						.toFixed()
 				),
 				TradeType.EXACT_OUTPUT
 			)
 			const slippageTolerance = new Percent('500', '10000')
-			const amountInMax = this.getNormalizedNumber(trade.maximumAmountIn(slippageTolerance).raw, tokenInDecimals)
+			const amountInMax = this.getNormalizedNumber(
+				trade.maximumAmountIn(slippageTolerance).raw,
+				tokenInDecimals
+			)
 			// approve token
-			const approve = await this.approveToken(amountInMax, fromPublicKey, fromPrivateKey, tokenIn, tokenOut)
-			if (!approve){
+			const approve = await this.approveToken(
+				amountInMax,
+				fromPublicKey,
+				fromPrivateKey,
+				tokenIn,
+				tokenOut
+			)
+			if (!approve) {
 				return
 			}
-			const hasEnoughBalance = await this.hasGotEnoughBalanceErc20(amountInMax, fromPublicKey)
-			if (!hasEnoughBalance){
+			const hasEnoughBalance = await this.hasGotEnoughBalanceErc20(
+				amountInMax,
+				fromPublicKey
+			)
+			if (!hasEnoughBalance) {
 				console.log('Bot has got insufficient amount of tokens in balance')
 				return
 			}
 			const path = [tokenInInit.address, tokenOutInit.address]
 			const deadline = Math.floor(Date.now() / 1000) + 60 * 20
-			const value = this.getNormalizedNumber(trade.outputAmount.raw,  tokenOutDecimals)
-			// const value = trade.outputAmount.raw / process.env.BLOCKCHAIN_CONTRACT_NUMBER
+			const value = this.getNormalizedNumber(
+				trade.outputAmount.raw,
+				tokenOutDecimals
+			)
 			transaction.data = contract.methods
 				.swapTokensForExactETH(
 					this.web3.utils.toHex(
-						value.multipliedBy(new BigNumber(10).pow(tokenOutDecimals)).toFixed()
+						value
+							.multipliedBy(new BigNumber(10).pow(tokenOutDecimals))
+							.toFixed()
 					),
 					this.web3.utils.toHex(
-						amountInMax.multipliedBy(new BigNumber(10).pow(tokenInDecimals)).toFixed()
+						amountInMax
+							.multipliedBy(new BigNumber(10).pow(tokenInDecimals))
+							.toFixed()
 					),
 					path,
 					outPublicKey,
@@ -280,17 +320,17 @@ export default class UniswapService {
 				tokenIn,
 				tokenOut
 			)
-			if (!rawTransaction){
+			if (!rawTransaction) {
 				return
 			}
 			const privateKey = new Buffer.from(fromPrivateKey, 'hex')
-			const transaction = process.env.BLOCKCHAIN === 'mainnet' ? new Tx(rawTransaction) : new Tx(rawTransaction,  {'chain': 'rinkeby'})
+			const transaction = new Tx(rawTransaction, config.chainData)
 			transaction.sign(privateKey)
 			const serializedTx = transaction.serialize().toString('hex')
 			this.web3.eth.sendSignedTransaction(
 				'0x' + serializedTx,
 				(error, hash) => {
-					if (error){
+					if (error) {
 						console.log(error)
 					}
 				}
@@ -321,17 +361,17 @@ export default class UniswapService {
 				tokenIn,
 				tokenOut
 			)
-			if (!rawTransaction){
+			if (!rawTransaction) {
 				return
 			}
 			const privateKey = new Buffer.from(fromPrivateKey, 'hex')
-			const transaction = process.env.BLOCKCHAIN === 'mainnet' ? new Tx(rawTransaction) : new Tx(rawTransaction,  {'chain': 'rinkeby'})
+			const transaction = new Tx(rawTransaction, config.chainData)
 			transaction.sign(privateKey)
 			const serializedTx = transaction.serialize().toString('hex')
 			this.web3.eth.sendSignedTransaction(
 				'0x' + serializedTx,
 				(error, hash) => {
-					if (error){
+					if (error) {
 						console.log(error)
 					}
 				}
@@ -401,30 +441,34 @@ export default class UniswapService {
 		})
 	}
 
-	async initTokenContract(address){
+	async initTokenContract(address) {
 		this.tokenContract = new this.web3.eth.Contract(abiERC20, address)
 	}
 
-	async getTokenDecimals(){
+	async getTokenDecimals() {
 		const decimals = await this.tokenContract.methods.decimals().call()
 	}
 
-	async getBalanceOf(userAddress){
-		const balance = await this.tokenContract.methods.balanceOf(userAddress).call()
+	async getBalanceOf(userAddress) {
+		const balance = await this.tokenContract.methods
+			.balanceOf(userAddress)
+			.call()
 		return balance
 	}
 
-	async getAllowance(userAddress){
-		const allowance = await this.tokenContract.methods.allowance(userAddress, process.env.ROUTER_ADDRESS).call()
+	async getAllowance(userAddress) {
+		const allowance = await this.tokenContract.methods
+			.allowance(userAddress, process.env.ROUTER_ADDRESS)
+			.call()
 		return allowance
 	}
 
-	async getTotalSupply(userAddress){
+	async getTotalSupply(userAddress) {
 		const totalSupply = await this.tokenContract.methods.totalSupply().call()
 		return totalSupply
 	}
 
-	async getBalanceETH(userAddress){
+	async getBalanceETH(userAddress) {
 		return await this.web3.eth.getBalance(userAddress)
 	}
 
@@ -434,10 +478,12 @@ export default class UniswapService {
 	 */
 
 	async generateApproveMaxAllowanceData(ethereumAddress, tokenAddress) {
-		const data = this.tokenContract.methods.approve(
-			process.env.ROUTER_ADDRESS,
-			'0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff'
-		).encodeABI()
+		const data = this.tokenContract.methods
+			.approve(
+				process.env.ROUTER_ADDRESS,
+				'0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff'
+			)
+			.encodeABI()
 		// console.log('allowance data: ', data)
 		return {
 			to: tokenAddress,
@@ -446,35 +492,38 @@ export default class UniswapService {
 			value: '0x00',
 			// gasPrice: this.web3.utils.toHex(gasPriceWei.toString()),
 			// gasLimit: this.web3.utils.toHex(gasLimit.toString())
-		};
+		}
 	}
 
-	async approveToken(amount, fromPublicKey, fromPrivateKey, tokenIn, tokenOut ){
+	async approveToken(amount, fromPublicKey, fromPrivateKey, tokenIn, tokenOut) {
 		// check allowance and balance
 		const tradePath = this.getTradePath(tokenIn, tokenOut)
 		// console.log('trade path: ', tradePath)
-		if (tradePath === 'erc20-erc20' || tradePath === 'erc20-eth'){
+		if (tradePath === 'erc20-erc20' || tradePath === 'erc20-eth') {
 			//check allowance
-			if (!await this.hasGotEnoughAllowance(amount, fromPublicKey)){
+			if (!(await this.hasGotEnoughAllowance(amount, fromPublicKey))) {
 				const resultTransactionCount = await this.web3.eth.getTransactionCount(
 					fromPublicKey,
 					'pending'
 				)
-				const rawTransaction = await this.generateApproveMaxAllowanceData(fromPublicKey, tokenIn)
+				const rawTransaction = await this.generateApproveMaxAllowanceData(
+					fromPublicKey,
+					tokenIn
+				)
 				rawTransaction.nonce = this.web3.utils.toHex(resultTransactionCount)
 				const gasLimit = await this.web3.eth.estimateGas({ ...rawTransaction })
 				const gasPriceWei = await this.web3.eth.getGasPrice()
 				rawTransaction.gasPrice = this.web3.utils.toHex(gasPriceWei.toString())
 				rawTransaction.gasLimit = this.web3.utils.toHex(gasLimit.toString())
 				const privateKey = new Buffer.from(fromPrivateKey, 'hex')
-				const transaction = process.env.BLOCKCHAIN === 'mainnet' ? new Tx(rawTransaction) : new Tx(rawTransaction,  {'chain': 'rinkeby'})
+				const transaction = new Tx(rawTransaction, config.chainData)
 				transaction.sign(privateKey)
 				const serializedTx = transaction.serialize().toString('hex')
 				this.web3.eth.sendSignedTransaction(
 					'0x' + serializedTx,
 					(error, hash) => {
 						console.log(error, hash)
-						if (error){
+						if (error) {
 							return false
 						}
 						return true
@@ -486,39 +535,48 @@ export default class UniswapService {
 		return true
 	}
 
-	async hasGotEnoughAllowance(amount, userAddress){
+	async hasGotEnoughAllowance(amount, userAddress) {
 		const decimals = await this.tokenContract.methods.decimals().call()
-		const allowance = this.getNormalizedNumber(await this.getAllowance(userAddress), decimals)
-		if (new BigNumber(amount).isGreaterThan(allowance)){
+		const allowance = this.getNormalizedNumber(
+			await this.getAllowance(userAddress),
+			decimals
+		)
+		if (new BigNumber(amount).isGreaterThan(allowance)) {
 			return false
 		}
 		return true
 	}
 
-	async hasGotEnoughBalanceErc20(amount, userAddress){
+	async hasGotEnoughBalanceErc20(amount, userAddress) {
 		const decimals = await this.tokenContract.methods.decimals().call()
-		const balance = await this.tokenContract.methods.balanceOf(userAddress).call()
-		if (new BigNumber(amount).isGreaterThan(this.getNormalizedNumber(balance, decimals))){
+		const balance = await this.tokenContract.methods
+			.balanceOf(userAddress)
+			.call()
+		if (
+			new BigNumber(amount).isGreaterThan(
+				this.getNormalizedNumber(balance, decimals)
+			)
+		) {
 			return false
 		}
 		return true
 	}
 
-	async hasGotEnoughBalanceEth(amount, userAddress){
+	async hasGotEnoughBalanceEth(amount, userAddress) {
 		const result = await this.web3.eth.getBalance(userAddress)
 		const balance = this.getNormalizedNumber(result, 18)
-		if (new BigNumber(amount).isGreaterThan(balance)){
+		if (new BigNumber(amount).isGreaterThan(balance)) {
 			return false
 		}
 		return true
 	}
 
-	getTradePath(fromToken, toToken){
-		if (fromToken.toLowerCase() === WETH[chainID].address.toLowerCase()){
+	getTradePath(fromToken, toToken) {
+		if (fromToken.toLowerCase() === WETH[chainID].address.toLowerCase()) {
 			return 'eth-erc20'
-		}else if (toToken.toLowerCase() === WETH[chainID].address.toLowerCase()){
+		} else if (toToken.toLowerCase() === WETH[chainID].address.toLowerCase()) {
 			return 'erc20-eth'
-		}else {
+		} else {
 			return 'erc20-erc20'
 		}
 	}
@@ -531,10 +589,14 @@ export default class UniswapService {
 		const reserve1 = reserves._reserve1
 
 		const tokens = [tokenIn, tokenOut]
-		const [token0, token1] = tokens[0].sortsBefore(tokens[1]) ? tokens : [tokens[1], tokens[0]]
+		const [token0, token1] = tokens[0].sortsBefore(tokens[1])
+			? tokens
+			: [tokens[1], tokens[0]]
 
-		const pair = new Pair(new TokenAmount(token0, reserve0), new TokenAmount(token1, reserve1))
+		const pair = new Pair(
+			new TokenAmount(token0, reserve0),
+			new TokenAmount(token1, reserve1)
+		)
 		return pair
 	}
-
 }

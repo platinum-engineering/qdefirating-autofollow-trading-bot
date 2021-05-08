@@ -1,7 +1,8 @@
 const Web3 = require('web3')
 const abiDecoder = require('abi-decoder')
+const config = require('../config')
 const web3Http = new Web3(
-	new Web3.providers.HttpProvider(process.env.INFURA_URL)
+	new Web3.providers.HttpProvider(process.env.NODE_API_URL)
 )
 const pairAbi = require('../abis/pair.json')
 const erc20Abi = require('../abis/ERC20.json')
@@ -12,15 +13,14 @@ import UniswapService from './uniswapService'
 const SDK = new UniswapService({})
 const MAX_AMOUNT = new BN(process.env.MAX_AMOUNT)
 const MIN_AMOUNT = new BN(process.env.MIN_AMOUNT)
-const WETH = process.env.WETH.toLowerCase()
+const WETH_CONTRACT_ADDRESS = process.env.WETH_CONTRACT_ADDRESS.toLowerCase()
 abiDecoder.addABI(routerAbi)
 
 let lastTxHash = ''
 
 const getAllTx = async () => {
-	const subdomain = process.env.BLOCKCHAIN === 'mainnet' ? 'api' : 'api-rinkeby'
 	const res = await axios.get(
-		`https://${subdomain}.etherscan.io/api?module=account&action=txlist&address=${process.env.TARGET_WALLET}&startblock=0&endblock=99999999&sort=desc&apikey=${process.env.ETHERSCAN_KEY}`
+		`${config.apis.chainScannerApiUrl}?module=account&action=txlist&address=${process.env.TARGET_WALLET}&startblock=0&endblock=99999999&sort=desc&apikey=${config.apis.chainScannerApiKey}`
 	)
 
 	return res.data.result[0]
@@ -29,7 +29,7 @@ const getAllTx = async () => {
 async function watchEtherTransfers() {
 	// Instantiate web3 with WebSocket provider
 	const web3 = new Web3(
-		new Web3.providers.WebsocketProvider(process.env.INFURA_WS_URL)
+		new Web3.providers.WebsocketProvider(config.apis.nodeApiWsUrl)
 	)
 
 	setInterval(async () => {
@@ -185,7 +185,7 @@ async function sendTx(decodedData, trx) {
 				let amount = SDK.getNormalizedNumber(trx.value, 18)
 				let params = decodedData.params
 				let path = params[1].value
-				let tokenIn = WETH
+				let tokenIn = WETH_CONTRACT_ADDRESS
 				let tokenOut = path[path.length - 1]
 				if (process.env.STOP_BUYING === 'true') {
 					console.log('the bot is restricted form buying')
@@ -231,7 +231,7 @@ async function sendTx(decodedData, trx) {
 					console.log('the bot is restricted form selling')
 					break
 				}
-				tokenOut = WETH
+				tokenOut = WETH_CONTRACT_ADDRESS
 				tokenIn = path[0]
 				amount = SDK.getNormalizedNumber(amountOutMin.value, 18)
 				if (amount.isGreaterThanOrEqualTo(MAX_AMOUNT)) {
@@ -273,7 +273,7 @@ async function sendTx(decodedData, trx) {
 					console.log('the bot is restricted form buying')
 					break
 				}
-				if (tokenIn.toLowerCase() === WETH) {
+				if (tokenIn.toLowerCase() === WETH_CONTRACT_ADDRESS) {
 					const amountIn = decodedData.params.filter(
 						el => el.name === 'amountIn'
 					)[0]
@@ -310,7 +310,7 @@ async function sendTx(decodedData, trx) {
 					}
 					break
 				}
-				if (tokenOut.toLowerCase() === WETH) {
+				if (tokenOut.toLowerCase() === WETH_CONTRACT_ADDRESS) {
 					const amountOutMin = decodedData.params.filter(
 						el => el.name === 'amountOutMin'
 					)[0]
@@ -438,8 +438,8 @@ async function decodeSwap(txReceipt) {
 							token1Sym
 						)
 						if (
-							token0.toLowerCase() === WETH ||
-							token1.toLowerCase() === WETH
+							token0.toLowerCase() === WETH_CONTRACT_ADDRESS ||
+							token1.toLowerCase() === WETH_CONTRACT_ADDRESS
 						) {
 							console.log('Executing Transation')
 							await createTransaction(
@@ -474,8 +474,8 @@ async function decodeSwap(txReceipt) {
 							token0Sym
 						)
 						if (
-							token0.toLowerCase() === WETH ||
-							token1.toLowerCase() === WETH
+							token0.toLowerCase() === WETH_CONTRACT_ADDRESS ||
+							token1.toLowerCase() === WETH_CONTRACT_ADDRESS
 						) {
 							console.log('Executing Transation')
 							await createTransaction(
@@ -524,7 +524,7 @@ async function createTransaction(
 	token1Address
 ) {
 	try {
-		if (token0Address.toLowerCase() === WETH) {
+		if (token0Address.toLowerCase() === WETH_CONTRACT_ADDRESS) {
 			switch (amount0) {
 				case amount0 > MAX_AMOUNT:
 					SDK.createTransactionExactTokenToToken(
@@ -556,7 +556,7 @@ async function createTransaction(
 					break
 			}
 		}
-		if (token1Address.toLowerCase() === WETH) {
+		if (token1Address.toLowerCase() === WETH_CONTRACT_ADDRESS) {
 			switch (amount1) {
 				case amount1 > MAX_AMOUNT:
 					// sell all tokens
