@@ -24,7 +24,7 @@ switch (config.blockChainName) {
 		config.chainData = { chain: 'mainnet' }
 		break
 	case 'rinkeby':
-		config.chainId = ChainId.MAINNET
+		config.chainId = ChainId.RINKEBY
 		config.chainData = { chain: 'rinkeby' }
 		break
 	case 'bsc-mainnet':
