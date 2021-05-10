@@ -300,15 +300,15 @@ export default class UniswapService {
 		}
 	}
 
-	async createTransactionExactTokenToToken(
+	async createTransactionExactTokenToToken({
 		fromPublicKey,
 		fromPrivateKey,
 		outPublicKey,
 		amount,
 		contractAddress,
 		tokenIn,
-		tokenOut
-	) {
+		tokenOut,
+	}) {
 		try {
 			this.tokenContract = new this.web3.eth.Contract(abiERC20, tokenIn)
 			const rawTransaction = await this.prepareTransactionExactTokenToToken(
@@ -341,15 +341,15 @@ export default class UniswapService {
 		}
 	}
 
-	async createTransactionTokensForExactETH(
+	async createTransactionTokensForExactETH({
 		fromPublicKey,
 		fromPrivateKey,
 		outPublicKey,
 		amount,
 		contractAddress,
 		tokenIn,
-		tokenOut
-	) {
+		tokenOut,
+	}) {
 		try {
 			this.tokenContract = new this.web3.eth.Contract(abiERC20, tokenIn)
 			const rawTransaction = await this.prepareTransactionTokensForExactETH(

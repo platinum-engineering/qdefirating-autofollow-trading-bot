@@ -7,7 +7,6 @@ const web3Http = new Web3(
 const pairAbi = require('../abis/pair.json')
 const erc20Abi = require('../abis/ERC20.json')
 const routerAbi = require('../abis/uniswap-router-v2.json')
-const axios = require('axios')
 const BN = require('bignumber.js')
 import UniswapService from './uniswapService'
 const SDK = new UniswapService({})
@@ -15,123 +14,136 @@ const MAX_AMOUNT = new BN(process.env.MAX_AMOUNT)
 const MIN_AMOUNT = new BN(process.env.MIN_AMOUNT)
 const WETH_CONTRACT_ADDRESS = process.env.WETH_CONTRACT_ADDRESS.toLowerCase()
 abiDecoder.addABI(routerAbi)
+const { getLastTx } = require('./scannerService')
 
 let lastTxHash = ''
 
-const getAllTx = async () => {
-	const res = await axios.get(
-		`${config.apis.chainScannerApiUrl}?module=account&action=txlist&address=${process.env.TARGET_WALLET}&startblock=0&endblock=99999999&sort=desc&apikey=${config.apis.chainScannerApiKey}`
-	)
-
-	return res.data.result[0]
+async function watchEtherTransfers() {
+	setInterval(checkForNewTransaction, 2000)
 }
 
-async function watchEtherTransfers() {
-	// Instantiate web3 with WebSocket provider
-	const web3 = new Web3(
-		new Web3.providers.WebsocketProvider(config.apis.nodeApiWsUrl)
-	)
+const checkForNewTransaction = async () => {
+	const lastTx = await getLastTx(config.targetWallet)
+	if (!lastTxHash) {
+		lastTxHash = lastTx.hash
+		return
+	}
+	if (lastTx.hash && lastTx.hash !== lastTxHash) {
+		lastTxHash = lastTx.hash
+		const txHash = lastTxHash
+		console.log('got new tx:', txHash)
+		processTransaction(lastTx).catch(console.log)
+	}
+}
 
-	setInterval(async () => {
-		const lastTx = await getAllTx()
-		if (!lastTxHash) {
-			lastTxHash = lastTx.hash
-			return
-		}
-
-		if (lastTx.hash && lastTx.hash !== lastTxHash) {
-			lastTxHash = lastTx.hash
-			const txHash = lastTxHash
-
-			console.log('got tx:', txHash)
-
-			try {
-				// Get transaction details
-				const trx = await getTxWithRepeat(20, txHash)
-
-				if (
-					trx &&
-					trx.from.toLowerCase() === process.env.TARGET_WALLET.toLowerCase()
-				) {
-					console.log('New Transaction Found: ', txHash)
-					const data = trx.input
-					const decodedData = abiDecoder.decodeMethod(data)
-					if (decodedData) {
-						console.log(decodedData)
-						if (process.env.ONLY_SUCCESSFUL === 'true') {
-							// console.log('Only Success Called')
-							confirmAndSendEtherTransaction(
-								txHash,
-								1,
-								decodedData,
-								trx,
-								sendTx
-							)
-						} else {
-							// console.log('Only Not Success Called')
-							await sendTx(decodedData, trx)
-						}
+const processTransaction = async ({ hash }) => {
+	const trx = await getTxWithRepeat(20, hash)
+	if (trx && trx.from.toLowerCase() === config.targetWallet) {
+		console.log('New Transaction Found: ', hash)
+		const data = trx.input
+		const decodedData = abiDecoder.decodeMethod(data)
+		if (decodedData) {
+			if (config.followOnlySucceded) {
+				confirmAndSendEtherTransaction(hash, 1, decodedData, trx, sendTx).catch(
+					e => {
+						throw e
 					}
-					// confirmEtherTransaction(txHash)
-				}
-				// Unsubscribe from pending transactions.
-				// subscription.unsubscribe()
-			} catch (error) {
-				console.log(error)
+				)
+			} else {
+				await sendTx(decodedData, trx)
 			}
 		}
-	}, 2000)
+	}
+}
 
-	return
+const calculateAmount = (amount, decimals = 18) => {
+	amount = SDK.getNormalizedNumber(amount, decimals)
+	if (amount.isGreaterThanOrEqualTo(MAX_AMOUNT)) {
+		return MAX_AMOUNT.toNumber()
+	} else if (amount.isLessThanOrEqualTo(MIN_AMOUNT)) {
+		return 0
+	}
 
-	return
+	return amount.toNumber()
+}
 
-	// // Instantiate subscription object
-	// const subscription = web3.eth
-	// 	.subscribe('pendingTransactions', function(error, result) {
-	// 		if (error) {
-	// 			console.log(error)
-	// 		}
-	// 	})
-	// 	.on('connected', async connection => {
-	// 		console.log('Started listening for wallet ', process.env.TARGET_WALLET)
-	// 	})
-	// 	.on('data', async txHash => {
-	// 		try {
-	// 			// Get transaction details
-	// 			const trx = await getTxWithRepeat(20, txHash)
+async function sendTx(decodedData, trx) {
+	try {
+		console.log(trx)
+		let path = decodedData.params.filter(el => el.name === 'path')[0].value
+		let method = null
 
-	// 			if (
-	// 				trx &&
-	// 				trx.from.toLowerCase() === process.env.TARGET_WALLET.toLowerCase()
-	// 			) {
-	// 				console.log('New Transaction Found: ', txHash)
-	// 				const data = trx.input
-	// 				const decodedData = abiDecoder.decodeMethod(data)
-	// 				if (decodedData) {
-	// 					console.log(decodedData)
-	// 					if (process.env.ONLY_SUCCESSFUL === 'true') {
-	// 						// console.log('Only Success Called')
-	// 						confirmAndSendEtherTransaction(
-	// 							txHash,
-	// 							1,
-	// 							decodedData,
-	// 							trx,
-	// 							sendTx
-	// 						)
-	// 					} else {
-	// 						// console.log('Only Not Success Called')
-	// 						await sendTx(decodedData, trx)
-	// 					}
-	// 				}
-	// 				// confirmEtherTransaction(txHash)
-	// 			}
-	// 			// Unsubscribe from pending transactions.
-	// 			// subscription.unsubscribe()
-	// 		} catch (error) {
-	// 			console.log(error)
-	// 		}
-	// 	})
+		const swapParams = {
+			fromPublicKey: config.mainWallet,
+			fromPrivateKey: config.mainWalletKey,
+			outPublicKey: config.mainWallet,
+			amount: 0,
+			contractAddress: config.routerAddress,
+			tokenIn: path[0].toLowerCase(),
+			tokenOut: path[path.length - 1].toLowerCase(),
+		}
+
+		switch (decodedData.name) {
+			case 'swapExactETHForTokens':
+				swapParams.tokenIn = config.wethContract
+				swapParams.amount = calculateAmount(trx.value)
+				method = 'createTransactionExactTokenToToken'
+				break
+			case 'swapExactTokensForETH':
+				swapParams.tokenOut = config.wethContract
+				swapParams.amount = calculateAmount(
+					decodedData.params.filter(el => el.name === 'amountOutMin')[0].value
+				)
+				method = 'createTransactionTokensForExactETH'
+				break
+			case 'swapExactTokensForTokens':
+				if (swapParams.tokenIn === config.wethContract) {
+					swapParams.amount = calculateAmount(
+						decodedData.params.filter(el => el.name === 'amountIn')[0].value
+					)
+					method = 'createTransactionExactTokenToToken'
+					break
+				}
+				if (swapParams.tokenOut === config.wethContract) {
+					swapParams.amount = calculateAmount(
+						decodedData.params.filter(el => el.name === 'amountOutMin')[0].value
+					)
+					method = 'createTransactionTokensForExactETH'
+					break
+				}
+				break
+		}
+
+		if (!swapParams.amount) return
+
+		if (swapParams.tokenIn === config.wethContract) {
+			if (config.stopBuying) {
+				console.log('the bot is restricted form buying')
+				return
+			}
+			console.log('Bot Buys')
+		} else if (swapParams.tokenOut === config.wethContract) {
+			if (config.stopSelling) {
+				console.log('the bot is restricted form selling')
+				return
+			}
+			console.log('Bot Sells')
+		} else {
+			console.log('Not an WETH or ETH swap, skipping')
+			return
+		}
+		if (!method) {
+			console.log(`${decodedData.name} method not implemented yet`)
+			return
+		}
+		console.log(method, swapParams)
+
+		const result = await SDK[method](swapParams)
+
+		console.log('Result: ', result)
+	} catch (error) {
+		console.log(error)
+	}
 }
 
 async function getConfirmations(txHash) {
@@ -153,205 +165,37 @@ async function getConfirmations(txHash) {
 	}
 }
 
-function confirmAndSendEtherTransaction(
+async function confirmAndSendEtherTransaction(
 	txHash,
 	confirmations = 1,
 	decodedData,
 	trx,
 	callback
 ) {
-	setTimeout(async () => {
-		// Get current number of confirmations and compare it with sought-for value
-		const trxConfirmations = await getConfirmations(txHash)
-		// console.log('Transaction with hash ' + txHash + ' has ' + trxConfirmations + ' confirmation(s)')
-
-		if (trxConfirmations >= confirmations) {
-			// Handle confirmation event according to your business logic
-
-			console.log(
-				'Transaction with hash ' + txHash + ' has been successfully confirmed'
-			)
-			await callback(decodedData, trx)
-			return
-		}
-		// Recursive call
-		return confirmAndSendEtherTransaction(txHash, confirmations)
-	}, 30 * 1000)
-}
-async function sendTx(decodedData, trx) {
-	try {
-		switch (decodedData.name) {
-			case 'swapExactETHForTokens':
-				let amount = SDK.getNormalizedNumber(trx.value, 18)
-				let params = decodedData.params
-				let path = params[1].value
-				let tokenIn = WETH_CONTRACT_ADDRESS
-				let tokenOut = path[path.length - 1]
-				if (process.env.STOP_BUYING === 'true') {
-					console.log('the bot is restricted form buying')
-					break
-				}
-				if (amount.isGreaterThanOrEqualTo(MAX_AMOUNT)) {
-					const result = await SDK.createTransactionExactTokenToToken(
-						process.env.WALLET_FROM,
-						process.env.WALLET_FROM_PRIVATE_KEY,
-						process.env.WALLET_FROM,
-						MAX_AMOUNT.toNumber(),
-						process.env.ROUTER_ADDRESS,
-						tokenIn,
-						tokenOut
-					)
-					if (result) {
-						console.log('Bot Buys: ', result)
-					}
-				} else if (
-					amount.isGreaterThan(MIN_AMOUNT) &&
-					amount.isLessThan(MAX_AMOUNT)
-				) {
-					const result = await SDK.createTransactionExactTokenToToken(
-						process.env.WALLET_FROM,
-						process.env.WALLET_FROM_PRIVATE_KEY,
-						process.env.WALLET_FROM,
-						amount.toNumber(),
-						process.env.ROUTER_ADDRESS,
-						tokenIn,
-						tokenOut
-					)
-					if (result) {
-						console.log('Bot Buys: ', result)
-					}
-				}
-				break
-			case 'swapExactTokensForETH':
-				const amountOutMin = decodedData.params.filter(
-					el => el.name === 'amountOutMin'
-				)[0]
-				path = decodedData.params.filter(el => el.name === 'path')[0].value
-				if (process.env.STOP_SELLING === 'true') {
-					console.log('the bot is restricted form selling')
-					break
-				}
-				tokenOut = WETH_CONTRACT_ADDRESS
-				tokenIn = path[0]
-				amount = SDK.getNormalizedNumber(amountOutMin.value, 18)
-				if (amount.isGreaterThanOrEqualTo(MAX_AMOUNT)) {
-					const result = await SDK.createTransactionTokensForExactETH(
-						process.env.WALLET_FROM,
-						process.env.WALLET_FROM_PRIVATE_KEY,
-						process.env.WALLET_FROM,
-						MAX_AMOUNT.toNumber(),
-						process.env.ROUTER_ADDRESS,
-						tokenIn,
-						tokenOut
-					)
-					if (result) {
-						console.log('Bot Sells: ', result)
-					}
-				} else if (
-					amount.isGreaterThan(MIN_AMOUNT) &&
-					amount.isLessThan(MAX_AMOUNT)
-				) {
-					const result = await SDK.createTransactionTokensForExactETH(
-						process.env.WALLET_FROM,
-						process.env.WALLET_FROM_PRIVATE_KEY,
-						process.env.WALLET_FROM,
-						amount.toNumber(),
-						process.env.ROUTER_ADDRESS,
-						tokenIn,
-						tokenOut
-					)
-					if (result) {
-						console.log('Bot Sells: ', result)
-					}
-				}
-				break
-			case 'swapExactTokensForTokens':
-				path = decodedData.params.filter(el => el.name === 'path')[0].value
-				tokenIn = path[0]
-				tokenOut = path[path.length - 1]
-				if (process.env.STOP_BUYING === 'true') {
-					console.log('the bot is restricted form buying')
-					break
-				}
-				if (tokenIn.toLowerCase() === WETH_CONTRACT_ADDRESS) {
-					const amountIn = decodedData.params.filter(
-						el => el.name === 'amountIn'
-					)[0]
-					amount = SDK.getNormalizedNumber(amountIn.value, 18)
-					if (amount.isGreaterThanOrEqualTo(MAX_AMOUNT)) {
-						const result = await SDK.createTransactionExactTokenToToken(
-							process.env.WALLET_FROM,
-							process.env.WALLET_FROM_PRIVATE_KEY,
-							process.env.WALLET_FROM,
-							MAX_AMOUNT.toNumber(),
-							process.env.ROUTER_ADDRESS,
-							tokenIn,
-							tokenOut
-						)
-						if (result) {
-							console.log('Bot Buys: ', result)
-						}
-					} else if (
-						amount.isGreaterThan(MIN_AMOUNT) &&
-						amount.isLessThan(MAX_AMOUNT)
-					) {
-						const result = await SDK.createTransactionExactTokenToToken(
-							process.env.WALLET_FROM,
-							process.env.WALLET_FROM_PRIVATE_KEY,
-							process.env.WALLET_FROM,
-							amount.toNumber(),
-							process.env.ROUTER_ADDRESS,
-							tokenIn,
-							tokenOut
-						)
-						if (result) {
-							console.log('Bot Buys: ', result)
-						}
-					}
-					break
-				}
-				if (tokenOut.toLowerCase() === WETH_CONTRACT_ADDRESS) {
-					const amountOutMin = decodedData.params.filter(
-						el => el.name === 'amountOutMin'
-					)[0]
-					amount = SDK.getNormalizedNumber(amountOutMin.value, 18)
-					if (amount.isGreaterThanOrEqualTo(MAX_AMOUNT)) {
-						const result = await SDK.createTransactionTokensForExactETH(
-							process.env.WALLET_FROM,
-							process.env.WALLET_FROM_PRIVATE_KEY,
-							process.env.WALLET_FROM,
-							MAX_AMOUNT.toNumber(),
-							process.env.ROUTER_ADDRESS,
-							tokenIn,
-							tokenOut
-						)
-						if (result) {
-							console.log('Bot Sells: ', result)
-						}
-					} else if (
-						amount.isGreaterThan(MIN_AMOUNT) &&
-						amount.isLessThan(MAX_AMOUNT)
-					) {
-						const result = await SDK.createTransactionTokensForExactETH(
-							process.env.WALLET_FROM,
-							process.env.WALLET_FROM_PRIVATE_KEY,
-							process.env.WALLET_FROM,
-							amount.toNumber(),
-							process.env.ROUTER_ADDRESS,
-							tokenIn,
-							tokenOut
-						)
-						if (result) {
-							console.log('Bot Sells: ', result)
-						}
-					}
-					break
-				}
-		}
-	} catch (error) {
-		console.log(error)
+	// Get current number of confirmations and compare it with sought-for value
+	const trxConfirmations = await getConfirmations(txHash)
+	// console.log('Transaction with hash ' + txHash + ' has ' + trxConfirmations + ' confirmation(s)')
+	if (trxConfirmations >= confirmations) {
+		// Handle confirmation event according to your business logic
+		console.log(
+			'Transaction with hash ' + txHash + ' has been successfully confirmed'
+		)
+		await callback(decodedData, trx)
+	} else {
+		setTimeout(async () => {
+			confirmAndSendEtherTransaction(
+				txHash,
+				confirmations,
+				decodedData,
+				trx,
+				callback
+			).catch(e => {
+				throw e
+			})
+		}, 30 * 1000)
 	}
 }
+
 const swapTopic =
 	'0xd78ad95fa46c994b6551d0da85fc275fe613ce37657fb8d5e3d130840159d822'
 async function decodeSwap(txReceipt) {
@@ -512,9 +356,11 @@ const getTxWithRepeat = async (repeatTimes, hash) => {
 	}
 	return res
 }
+
 function getNormalizedNumber(number, decimals) {
 	return new BN(number).dividedBy(new BN(10).pow(decimals))
 }
+
 async function createTransaction(
 	token0Sym,
 	token1Sym,
@@ -528,9 +374,9 @@ async function createTransaction(
 			switch (amount0) {
 				case amount0 > MAX_AMOUNT:
 					SDK.createTransactionExactTokenToToken(
-						process.env.MAIN_WALLET,
+						process.env.WALLET_FROM,
 						process.env.PRIVATE_KEY,
-						process.env.MAIN_WALLET,
+						process.env.WALLET_FROM,
 						amount0,
 						process.env.ROUTER_ADDRESS,
 						token0Address,
@@ -541,9 +387,9 @@ async function createTransaction(
 					break
 				case amount0 > MIN_AMOUNT && amount0 < MAX_AMOUNT:
 					SDK.createTransactionExactTokenToToken(
-						process.env.MAIN_WALLET,
+						process.env.WALLET_FROM,
 						process.env.PRIVATE_KEY,
-						process.env.MAIN_WALLET,
+						process.env.WALLET_FROM,
 						amount0,
 						process.env.ROUTER_ADDRESS,
 						token0Address,
