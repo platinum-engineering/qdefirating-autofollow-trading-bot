@@ -320,6 +320,7 @@ export default class UniswapService {
 				tokenIn,
 				tokenOut
 			)
+			console.log(rawTransaction)
 			if (!rawTransaction) {
 				return
 			}

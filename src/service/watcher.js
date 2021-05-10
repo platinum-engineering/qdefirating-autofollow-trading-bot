@@ -69,7 +69,6 @@ const calculateAmount = (amount, decimals = 18) => {
 
 async function sendTx(decodedData, trx) {
 	try {
-		console.log(trx)
 		let path = decodedData.params.filter(el => el.name === 'path')[0].value
 		let method = null
 
@@ -112,6 +111,35 @@ async function sendTx(decodedData, trx) {
 					break
 				}
 				break
+			case 'swapTokensForExactTokens':
+				if (swapParams.tokenIn === config.wethContract) {
+					swapParams.amount = calculateAmount(
+						decodedData.params.filter(el => el.name === 'amountIn')[0].value
+					)
+					method = 'createTransactionExactTokenToToken'
+					break
+				}
+				if (swapParams.tokenOut === config.wethContract) {
+					swapParams.amount = calculateAmount(
+						decodedData.params.filter(el => el.name === 'amountOutMin')[0].value
+					)
+					method = 'createTransactionTokensForExactETH'
+					break
+				}
+				break
+			case 'swapTokensForExactETH':
+				swapParams.tokenOut = config.wethContract
+				swapParams.amount = calculateAmount(
+					decodedData.params.filter(el => el.name === 'amountOutMin')[0].value
+				)
+				method = 'createTransactionTokensForExactETH'
+				break
+			case 'swapETHForExactTokens':
+				swapParams.amount = calculateAmount(
+					decodedData.params.filter(el => el.name === 'amountIn')[0].value
+				)
+				method = 'createTransactionExactTokenToToken'
+				break
 		}
 
 		if (!swapParams.amount) return
@@ -136,7 +164,6 @@ async function sendTx(decodedData, trx) {
 			console.log(`${decodedData.name} method not implemented yet`)
 			return
 		}
-		console.log(method, swapParams)
 
 		const result = await SDK[method](swapParams)
 
