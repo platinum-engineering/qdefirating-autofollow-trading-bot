@@ -57,6 +57,7 @@ const processTransaction = async ({ hash }) => {
 }
 
 const calculateAmount = (amount, decimals = 18) => {
+	console.log(amount)
 	amount = SDK.getNormalizedNumber(amount, decimals)
 	if (amount.isGreaterThanOrEqualTo(MAX_AMOUNT)) {
 		return MAX_AMOUNT.toNumber()
@@ -81,7 +82,6 @@ async function sendTx(decodedData, trx) {
 			tokenIn: path[0].toLowerCase(),
 			tokenOut: path[path.length - 1].toLowerCase(),
 		}
-
 		switch (decodedData.name) {
 			case 'swapExactETHForTokens':
 				swapParams.tokenIn = config.wethContract
@@ -142,7 +142,10 @@ async function sendTx(decodedData, trx) {
 				break
 		}
 
-		if (!swapParams.amount) return
+		if (!swapParams.amount) {
+			console.log('amount too small')
+			return
+		}
 
 		if (swapParams.tokenIn === config.wethContract) {
 			if (config.stopBuying) {
@@ -467,4 +470,5 @@ async function createTransaction(
 
 module.exports = {
 	watchEtherTransfers,
+	processTransaction,
 }

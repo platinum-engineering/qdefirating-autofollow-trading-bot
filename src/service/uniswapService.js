@@ -89,6 +89,7 @@ export default class UniswapService {
 			}
 			tokenIn = this.web3.utils.toChecksumAddress(tokenIn, chainID)
 			tokenOut = this.web3.utils.toChecksumAddress(tokenOut, chainID)
+
 			const contract = new this.web3.eth.Contract(abiJson, contractAddress, {
 				from: fromPublicKey,
 			})
@@ -127,6 +128,7 @@ export default class UniswapService {
 				coinAmount,
 				fromPublicKey
 			)
+
 			if (!hasGotEnoughBalance) {
 				console.log('Bot has got insufficient amount of tokens in balance')
 				return
@@ -320,7 +322,6 @@ export default class UniswapService {
 				tokenIn,
 				tokenOut
 			)
-			console.log(rawTransaction)
 			if (!rawTransaction) {
 				return
 			}
